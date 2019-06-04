@@ -5,13 +5,13 @@ import numpy as np
 from keras.utils import plot_model
 
 
-class TextCNN():
+class TextCNN:
     def __init__(self, sentence_length, embedding_size, vocab_size, n_classes,
                  n_filters, filters=(2, 3, 4, 5), trainable=True, w2v_model=None,
                  vocabulary=dict(), dense_layers=None, dropout_rate=0.2,
                  loss='sparse_categorical_crossentropy', metrics=['accuracy']):
-        self.__text_cnn = _TextCNN(sentence_length, embedding_size, vocab_size, vocabulary, w2v_model, trainable, filters,
-                            n_filters, dense_layers, n_classes, loss, metrics, dropout_rate)
+        self.__text_cnn = __TextCNN(sentence_length, embedding_size, vocab_size, vocabulary, w2v_model, trainable, filters,
+                                    n_filters, dense_layers, n_classes, loss, metrics, dropout_rate)
 
     def get_model(self):
         return self.__text_cnn.model
@@ -20,7 +20,7 @@ class TextCNN():
         plot_model(self.__text_cnn.model, to_file=filename)
 
 
-class _TextCNN():
+class __TextCNN:
     def __init__(self, sentence_length, embedding_size, vocab_size, vocabulary, w2v_model, trainable, filters,
                  n_filters, dense_layers, n_classes, loss, metrics, dropout_rate):
         self.model = self.collect_cnn(sentence_length, embedding_size, vocab_size,
