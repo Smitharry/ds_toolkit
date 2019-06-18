@@ -13,4 +13,6 @@ dataset = pd.read_csv('dataset.csv', encoding='utf-8')
 bow_df = pd.read_csv('bow_df.csv', encoding='utf-8')
 hier = hierarchical_class.HierarchicalClassification(np.array(dataset[['level_0', 'level_1', 'level_2', 'level_3', 'level_4']]),
                                  [forest_0, forest_1, forest_2, forest_3, forest_4])
-a = hier.fit_model(np.array(bow_df.drop(columns='ClassCode', axis=1)))
+hier.fit(np.array(bow_df.drop(columns='ClassCode', axis=1)))
+a = hier.predict_proba(hier.val[0])
+
