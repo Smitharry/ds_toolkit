@@ -1,19 +1,24 @@
-
 import numpy as np
 
 
 class HierarchicalClassification:
     def __init__(self, models, params=dict()):
         self.models = models
+        self.class_order = {}
+        self.levels = None
+        self.n_classes = None
+        self.uniques = None
+        self.path = None
         if params:
             self.set_params(params)
 
     def set_params(self, params):
-        for model_index in params:
-            param = params[model_index]
-            self.models[model_index].set_params(**param)
+        for param in params:
+            model, param_ = param.split('/')
+            model = int(model)
+            self.models[model].set_params({param_: params[param]})
 
-    def get_params(self, deep=False):
+    def get_params(self):
         params = {}
         for index, model in enumerate(self.models):
             params[index] = model.get_params()
@@ -34,10 +39,10 @@ class HierarchicalClassification:
     def create_mask(self, levels):
         masks = []
         for index, level in enumerate(levels.transpose()):
-            slice = np.logical_not(np.isin(level, list(self.uniques[index])))
-            level[slice] = 0
+            unseen_instances = np.isin(level, list(self.uniques[index]), invert=True)
+            level[unseen_instances] = 0
             mask = np.eye(self.n_classes[index])[level]
-            mask[slice] = mask[slice] * 0
+            mask[unseen_instances] = mask[unseen_instances] * 0
             masks.append(mask)
         return masks
 
@@ -53,14 +58,19 @@ class HierarchicalClassification:
         likelihood = np.sum(likelihood)
         return likelihood
 
-    def find_predicted_classes(self, y_train):
-        self.predicted_classes = self.find_class_labels(y_train)
+    def find_class_order(self):
+        for index, model in enumerate(self.models):
+            keys = model.classes_
+            items = [i for i in range(len(keys))]
+            local_class_order = dict(zip(keys, items))
+            self.class_order[index] = local_class_order
 
     def fit(self, X, y_train):
         self.collect_info(y_train)
         for model, y_true in zip(self.models, y_train.transpose()):
             model.fit(X, y_true)
             X = np.concatenate((X, model.predict_proba(X)), axis=1)
+        self.find_class_order()
 
     def predict(self, x):
         y_pred = []
@@ -74,18 +84,38 @@ class HierarchicalClassification:
         probs = self.calculate_prob(y_pred, len(x))
         return probs
 
+    def find_actual_path(self, path):
+        actual_path = [self.class_order[index][class_] for index, class_ in enumerate(path)]
+        return actual_path
+
     def calculate_prob(self, y_pred, length):
-        probs_list = {}
+        all_probs = {}
         for path in self.path:
-            y_true = np.array([np.ones(length, dtype=np.int32) * path[i] for i in range(len(path))]).transpose()
-            masks = self.create_mask(y_true)
-            level_true_probs = []
-            for level, mask in zip(y_pred, masks):
-                level_true_prob = np.multiply(level, mask)
-                level_true_prob = level_true_prob.sum(axis=1)
-                level_true_probs.append(level_true_prob)
-            probs = np.ones(length)
-            for level in level_true_probs:
-                probs = probs * np.array(level)
-            probs_list[path[-1]] = probs
-        return probs_list
+            actual_path = self.find_actual_path(path)
+            masks = self.collect_pseudo_true(actual_path, length)
+            path_probs = self.calculate_class_prob(masks, y_pred, length)
+            all_probs[path[-1]] = path_probs
+        return all_probs
+
+    def collect_pseudo_true(self, actual_path, length):
+        y_true = np.array([np.ones(length, dtype=np.int32) * class_ for class_ in actual_path]).transpose()
+        masks = self.create_mask(y_true)
+        return masks
+
+    def calculate_class_prob(self, masks, y_pred, length):
+        class_probs = []
+        for level, mask in zip(y_pred, masks):
+            true_prob = self.calculate_level_prob(level, mask)
+            class_probs.append(true_prob)
+        return self.multiply_along_path(class_probs, length)
+
+    def multiply_along_path(self, class_probs, length):
+        probs = np.ones(length)
+        for level in class_probs:
+            probs = probs * np.array(level)
+        return probs
+
+    def calculate_level_prob(self, level, mask):
+        true_prob = np.multiply(level, mask)
+        true_prob = true_prob.sum(axis=1)
+        return true_prob
